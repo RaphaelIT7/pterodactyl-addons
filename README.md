@@ -14,7 +14,7 @@ It could happen that an Update causes the setup to fail, but this won't happen w
 3.2 Add the SSH_USER secret that contains the username for the SSH User. (Don't use root!)  
 3.3 Add the SSH_PRIVATE_KEY or SSH_PASSWORD secret that contains the key or password for the SSH User. (I need to learn to use SSH Keys)  
 4. Give the SSH User all sudo permissions needed. (`chown`, `rm`)  
-5. Install all [Dependencies](https://pterodactyl.io/community/customization/panel.html)
+5. Install all [Dependencies](https://pterodactyl.io/community/customization/panel.html#install-dependencies) and [Build](https://pterodactyl.io/community/customization/panel.html#build-panel-assets) the Panel once Yourself
 
 Now test the workflow and see if it works properly.
 If the workflow had no errors, open your Panel and see if the Server Router has now Icons.  
