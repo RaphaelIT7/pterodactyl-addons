@@ -1,0 +1,97 @@
+name: Build and deploy
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  PTERODACTYL: "/var/www/pterodactyl"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.1.5"
+      
+      - name: build
+        run: |
+          cd addons
+          lua addons.lua
+          mv additional_cmds.txt ../panel
+          cd ../
+          cd panel
+          zip -r panel.zip ./
+          mv panel.zip ../
+
+      - name: prepare deploy
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          script: |
+            cd ${{ env.PTERODACTYL }}
+            sudo chown -R pterodactyl-updater:pterodactyl-updater ${{ env.PTERODACTYL }}
+            sudo rm -rf *
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+            export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
+
+      - name: upload zip
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+            username: '${{ secrets.SSH_USER }}'
+            server: '${{ secrets.SSH_IP }}'
+            ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+            local_path: './panel.zip'
+            remote_path: '${{ env.PTERODACTYL }}'
+            sftpArgs: '-o ConnectTimeout=5'
+            password: '${{ secrets.SSH_PASSWORD }}'
+
+      - name: setup deploy 
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          script: |
+            cd ${{ env.PTERODACTYL }}
+            unzip panel.zip
+            cd panel
+            mv {*,.[^.]*,..?*} ../ -f
+            cd ../
+            rm -rf panel/
+            rm -rf panel.zip
+            
+      - name: deploy
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          script: |
+            cd ${{ env.PTERODACTYL }}
+            mkdir storage/framework
+            mkdir storage/framework/cache
+            mkdir storage/framework/sessions
+            mkdir storage/framework/views
+            mkdir public/assets
+            chmod -R 755 storage/* bootstrap/cache
+            composer install --no-dev --optimize-autoloader
+            sh additional_cmds.txt
+            yarn install
+            yarn run build:production
+            php artisan optimize
+            rm additional_cmds.txt
+            sudo chown -R www-data:www-data ${{ env.PTERODACTYL }}*
